@@ -158,9 +158,18 @@ void _fadvance(void) {
     }
 
     jacobian_copy = m_copy(jacobian, jacobian_copy);
+    /* I - dt * J */
+    for (i = 0; i < num_reactions; ++i){
+        for (j = 0; j < num_states; ++j){
+            if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
+            else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt);
+        }
+    }
+
     pivot = px_get(jacobian_copy->m);
     LUfactor(jacobian_copy, pivot);
     LUsolve(jacobian_copy, pivot, b, x);
+
     //printf("Matrix: \n");
     m_output(jacobian);
     printf("\n\n");

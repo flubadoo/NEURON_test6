@@ -1,0 +1,1 @@
+double myfunc(double* _species) {return (_species[0] + ((_species[1] * _species[0]) * 2));}
