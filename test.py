@@ -9,12 +9,12 @@ sec.nseg = 1
 sec.L = 100
 
 r = rxd.Region([sec])
-ca = rxd.Species(r, initial=lambda foo: 2)
-na = rxd.Species(r, initial=lambda foo: 3)
+na = rxd.Species(r, initial=lambda foo: 1)
+ca = rxd.Species(r, initial=lambda foo: 0)
 
 # not at all biophysical, but just for a test
-na_wave = rxd.Rate(na, na * na * na + 6 * ca)
-ca_wave = rxd.Rate(ca, ca + na * ca * 2)
+na_wave = rxd.Rate(na, -ca)
+ca_wave = rxd.Rate(ca, na)
 
 def plot_it():
     pyplot.subplot(2, 1, 1)
@@ -24,6 +24,7 @@ def plot_it():
 
 h.finitialize()
 h.fadvance()
+
 """
 for i in xrange(5):
     h.continuerun(i * 25)

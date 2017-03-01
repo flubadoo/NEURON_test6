@@ -93,9 +93,10 @@ void _fadvance(void) {
     VEC *x;
     VEC *b;
     PERM *pivot;
-
+    //printf("Here");
     jacobian = m_get(num_reactions, num_states);
-    b = v_get(num_states);
+    b = v_get(num_reactions);
+    x = v_get(num_states);
     
     /* make a copy of the states to work from */
     old_states = (double*) malloc(sizeof(double) * num_states);
@@ -134,25 +135,19 @@ void _fadvance(void) {
                 states_for_reaction[k] = old_states[_reaction_indices[i][j + k]];
                 states_for_reaction_dx[k] = states_for_reaction[k];
             }
+
             for (l = 0; l < num_states_involved; l++) {
                 states_for_reaction_dx[l] = states_for_reaction[l] + dx;
                 double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
-                printf("%f\t", pd);
-                printf("l: %d\n", l);
+                //printf("%f\t", pd);
+                //printf("l: %d\n", l);
                 m_set_val(jacobian, i, l, pd);
                 states_for_reaction_dx[l] -= dx;
             }
-            /* do the reaction itself */
-            printf("state before: %f\t", states[_change_states[i][j_count]]);
-            printf("total change: %f\t", current_reaction(states_for_reaction));
 
             states[_change_states[i][j_count]] += dt * current_reaction(states_for_reaction);
             v_set_val(b, i, dt * current_reaction(states_for_reaction));
-
-            printf("state after reaction: %f", states[_change_states[i][j_count]]);
-            printf("\n");
         }
-        printf("next rxn");
         free(states_for_reaction);
         free(states_for_reaction_dx);
     }
@@ -166,27 +161,30 @@ void _fadvance(void) {
         }
     }
 
+    printf("\n\n b: \n");
+    v_output(b);
+
+    printf("\nJacobian \n");
+    m_output(jacobian);
+    printf("\n\n");
+
+    printf("I - dtJ\n");
+    m_output(jacobian_copy);
+    printf("\n\n");
+
     pivot = px_get(jacobian_copy->m);
     LUfactor(jacobian_copy, pivot);
     LUsolve(jacobian_copy, pivot, b, x);
 
-    //printf("Matrix: \n");
-    m_output(jacobian);
-    printf("\n\n");
-
-    printf("x: \n");
+    printf("Solution: \n");
     v_output(x);
     printf("\n");
-
-    printf("b: \b");
-    v_output(b);
 
     free(old_states);
     free(jacobian_copy);
     free(jacobian);
-    //free(pivot);
-    //free(b);
-    //free(x);  
+    free(b);
+    free(pivot);
 }
 
 int rxd_nonvint_block(int method, int size, double* p1, double* p2, int thread_id) {
