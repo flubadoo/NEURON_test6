@@ -156,8 +156,8 @@ void _fadvance(void) {
     /* I - dt * J */
     for (i = 0; i < num_reactions; ++i){
         for (j = 0; j < num_states; ++j){
-            if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
-            else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt);
+            if (i == j) m_set_val(jacobian_copy, i, j, 1);
+            else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt*0);
         }
     }
 

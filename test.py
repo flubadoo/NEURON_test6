@@ -24,6 +24,7 @@ def plot_it():
 
 h.finitialize()
 h.fadvance()
+h.continuerun(1.57)
 
 """
 for i in xrange(5):
