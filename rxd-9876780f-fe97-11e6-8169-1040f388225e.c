@@ -1,1 +1,0 @@
-double myfunc(double* _species) {return 25;}

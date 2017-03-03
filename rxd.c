@@ -81,7 +81,7 @@ void _fadvance(void) {
     double* old_states;
     double* states_for_reaction;
     double* states_for_reaction_dx;
-    int i, j, k, l, max_j, j_count;
+    int i, j, k, l, m, max_j, j_count;
     double current;
     double shift;
     double dt = *dt_ptr;
@@ -137,15 +137,13 @@ void _fadvance(void) {
             }
 
             for (l = 0; l < num_states_involved; l++) {
+                /*calculate each partial derivative*/
                 states_for_reaction_dx[l] = states_for_reaction[l] + dx;
                 double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
-                //printf("%f\t", pd);
-                //printf("l: %d\n", l);
                 m_set_val(jacobian, i, l, pd);
                 states_for_reaction_dx[l] -= dx;
             }
-
-            states[_change_states[i][j_count]] += dt * current_reaction(states_for_reaction);
+            /* states[_change_states[i][j_count]] += dt * current_reaction(states_for_reaction); */
             v_set_val(b, i, dt * current_reaction(states_for_reaction));
         }
         free(states_for_reaction);
@@ -176,8 +174,16 @@ void _fadvance(void) {
     LUfactor(jacobian_copy, pivot);
     LUsolve(jacobian_copy, pivot, b, x);
 
-    printf("Solution: \n");
+    printf("delY: \n");
     v_output(x);
+    printf("\n");
+
+    printf("Changed state: \n");
+    for (m = 0; m < num_states; ++m){
+        states[m] += v_get_val(x, m);
+        printf("%f\t", states[m]);
+    }
+
     printf("\n");
 
     free(old_states);
