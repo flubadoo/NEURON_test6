@@ -119,7 +119,7 @@ void _fadvance(void) {
 
     /* Now the reactions */
     for (i = 0; i < num_reactions; i++) {
-        printf("%d reactions, %d states.\n", num_reactions, num_states);
+        //printf("%d reactions, %d states.\n", num_reactions, num_states);
         num_states_involved = _num_states_involved[i];
         states_for_reaction = (double*) malloc(sizeof(double) * num_states_involved);
         states_for_reaction_dx = (double*) malloc(sizeof(double) * num_states_involved);
@@ -154,13 +154,10 @@ void _fadvance(void) {
     /* I - dt * J */
     for (i = 0; i < num_reactions; ++i){
         for (j = 0; j < num_states; ++j){
-            if (i == j) m_set_val(jacobian_copy, i, j, 1);
-            else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt*0);
+            if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
+            else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt);
         }
     }
-
-    printf("\n\n b: \n");
-    v_output(b);
 
     printf("\nJacobian \n");
     m_output(jacobian);
@@ -174,7 +171,7 @@ void _fadvance(void) {
     LUfactor(jacobian_copy, pivot);
     LUsolve(jacobian_copy, pivot, b, x);
 
-    printf("delY: \n");
+    printf("Y Change: \n");
     v_output(x);
     printf("\n");
 
