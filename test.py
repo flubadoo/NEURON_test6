@@ -13,7 +13,7 @@ na = rxd.Species(r, initial=lambda foo: 1)
 ca = rxd.Species(r, initial=lambda foo: 0)
 
 # not at all biophysical, but just for a test
-na_wave = rxd.Rate(na, -ca)
+na_wave = rxd.Rate(na, -ca+na)
 ca_wave = rxd.Rate(ca, na)
 
 def plot_it():
@@ -24,7 +24,8 @@ def plot_it():
 
 h.finitialize()
 h.fadvance()
-h.continuerun(1.575)
+h.continuerun(1.57)
+print(h.t)
 
 """
 for i in xrange(5):

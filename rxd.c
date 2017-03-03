@@ -150,6 +150,25 @@ void _fadvance(void) {
         free(states_for_reaction_dx);
     }
 
+    /* refactored
+    for (j_count = j = 0; j < max_j; j+= <<# involved states>>; j_count++) {
+        for (i = 0; i < num_reactions; i++){
+            for (k = 0; k < num_states_involved; l++){
+                <<copy the states to contiguous memory>>
+            }
+
+            for (l = 0; l < num_states_involved){
+                <<calculate each partial derivative>>
+            }
+        }
+    }
+
+    we loop through each location. 
+    each iteration, we go through each reaction, each one being an rxd.rate and loop thru each state
+    to generate a partial derivative which we cumulatively add to ones in the same location
+    to generate a change for each location. As such, we would have a jacobian for each location.
+    */
+    
     jacobian_copy = m_copy(jacobian, jacobian_copy);
     /* I - dt * J */
     for (i = 0; i < num_reactions; ++i){
