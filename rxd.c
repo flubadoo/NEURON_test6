@@ -85,7 +85,7 @@ void set_reaction_indices(int reaction_id, int num_states_involved, int num_loca
 void set_reaction_indices(int reaction_index, int num_species_per_location, int num_locations, int* indices) {
     _reaction_index = reaction_index;
     _num_species_per_location = num_species_per_location;
-    _num_locations = _num_locations;
+    _num_locations = num_locations;
     _indices = indices;
 }
 
@@ -115,7 +115,6 @@ void _fadvance(void) {
         current = states[i];
         shift = 0;
         for (j = neighbor_index[i]; j < neighbor_index[i + 1]; j++) {
-
             shift += neighbor_rates[j] * (old_states[neighbor_list[j]] - current);
         }
         states[i] += dt * shift;
@@ -129,17 +128,49 @@ void _fadvance(void) {
         states_for_reaction_dx = (double*) malloc(sizeof(double) * _num_species_per_location);
 
         for (j = 0; j < num_reactions; ++j){
+            current_reaction = reactions[j];
+
             for (k = 0; k < _num_species_per_location; ++k){
                 states_for_reaction[k] = old_states[k+_num_species_per_location];
                 states_for_reaction_dx[k] = states_for_reaction[k];
             }
+
             for (l = 0; l < _num_species_per_location; ++l){
                 states_for_reaction_dx[l] = states_for_reaction[l] + dx;
                 double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
-                m_set_val(jacobian, i, l, pd);
+                m_set_val(jacobian, j, l, pd);
                 states_for_reaction_dx[l] -= dx;
             }
+
         }
+
+        jacobian_copy = m_copy(jacobian, jacobian_copy);
+
+        for (i = 0; i < num_reactions; ++i){
+            for (j = 0; j < num_states; ++j){
+                if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
+                else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt);
+            }
+        }
+
+        pivot = px_get(jacobian_copy->m);
+        LUfactor(jacobian_copy, pivot);
+        LUsolve(jacobian_copy, pivot, b, x);
+
+        //Needs changing around
+        printf("Changed state: \n");
+        for (m = 0; m < num_states; ++m){
+            states[m] += v_get_val(x, m);
+            printf("%f\t", states[m]);
+        }
+
+        free(old_states);
+        free(jacobian_copy);
+        free(jacobian);
+        free(b);
+        free(pivot);
+        free(states_for_reaction_dx);
+        free(states_for_reaction);
     }
 }
 
