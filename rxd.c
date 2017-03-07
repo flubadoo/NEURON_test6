@@ -46,10 +46,15 @@ double* neighbor_rates;
 int* neighbor_list;
 ReactionRate reactions[MAX_REACTIONS];
 int num_reactions;
-int _num_states_involved[MAX_REACTIONS];
-int _num_location[MAX_REACTIONS];
-int* _reaction_indices[MAX_REACTIONS];
-int* _change_states[MAX_REACTIONS];
+int _reaction_index;
+int _num_species_per_location;
+int _num_locations;
+int _indices[MAX_REACTIONS];
+
+//int _num_states_involved[MAX_REACTIONS];
+//int _num_location[MAX_REACTIONS];
+//int* _reaction_indices[MAX_REACTIONS];
+//int* _change_states[MAX_REACTIONS];
 
 void clear_rates(void) {
     num_reactions = 0;
@@ -69,7 +74,7 @@ void setup_solver(PyHocObject* my_states, PyHocObject* my_dt_ptr, int my_num_sta
     neighbor_rates = my_neighbor_rates;
 }
 
-void set_reaction_indices(int reaction_id, int num_states_involved, int num_location, int* change_states, int* indices) {
+void set_reaction_indices(int reaction_id, int num_states_involved, int num_location int* change_states, int* indices) {
     _num_states_involved[reaction_id] = num_states_involved;
     _num_location[reaction_id] = num_location;
     /* TODO: copy? */
@@ -77,6 +82,68 @@ void set_reaction_indices(int reaction_id, int num_states_involved, int num_loca
     _change_states[reaction_id] = change_states;
 }
 
+void set_reaction_indices(int reaction_index, int num_species_per_location, int num_locations, int* indices) {
+    _reaction_index = reaction_index;
+    _num_species_per_location = num_species_per_location;
+    _num_locations = _num_locations;
+    _indices = indices;
+}
+
+void _fadvance(void) {
+    double* old_states;
+    double* states_for_reaction;
+    double* states_for_reaction_dx;
+    int i, j, k, l, m, max_j, j_count;
+    double current;
+    double shift;
+    double dt = *dt_ptr;
+    double dx = FLT_EPSILON;
+    ReactionRate current_reaction;
+    MAT *jacobian;
+    MAT *jacobian_copy = NULL;
+    VEC *x;
+    VEC *b;
+    PERM *pivot;
+
+    old_states = (double*) malloc(sizeof(double) * num_states);
+    assert(old_states); 
+    for (i = 0; i < num_states; i++) {
+        old_states[i] = states[i];
+    }
+
+    for (i = 0; i < num_states; i++) {
+        current = states[i];
+        shift = 0;
+        for (j = neighbor_index[i]; j < neighbor_index[i + 1]; j++) {
+
+            shift += neighbor_rates[j] * (old_states[neighbor_list[j]] - current);
+        }
+        states[i] += dt * shift;
+    }
+
+    for (i = 0; i < _num_locations; ++i) {
+        jacobian = m_get(num_reactions, _num_species_per_location);
+        b = v_get(num_reactions);
+        x = v_get(num_states);
+        states_for_reaction = (double*) malloc(sizeof(double) * _num_species_per_location);
+        states_for_reaction_dx = (double*) malloc(sizeof(double) * _num_species_per_location);
+
+        for (j = 0; j < num_reactions; ++j){
+            for (k = 0; k < _num_species_per_location; ++k){
+                states_for_reaction[k] = old_states[k+_num_species_per_location];
+                states_for_reaction_dx[k] = states_for_reaction[k];
+            }
+            for (l = 0; l < _num_species_per_location; ++l){
+                states_for_reaction_dx[l] = states_for_reaction[l] + dx;
+                double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
+                m_set_val(jacobian, i, l, pd);
+                states_for_reaction_dx[l] -= dx;
+            }
+        }
+    }
+}
+
+/*
 void _fadvance(void) {
     double* old_states;
     double* states_for_reaction;
@@ -93,33 +160,32 @@ void _fadvance(void) {
     VEC *x;
     VEC *b;
     PERM *pivot;
-    //printf("Here");
+
     jacobian = m_get(num_reactions, num_states);
     b = v_get(num_reactions);
     x = v_get(num_states);
     
-    /* make a copy of the states to work from */
+
     old_states = (double*) malloc(sizeof(double) * num_states);
-    assert(old_states); /* to detect memory errors */
+    assert(old_states); 
     for (i = 0; i < num_states; i++) {
         old_states[i] = states[i];
     }
 
-    /* Euler advance; diffusion one state index (i) at a time */
     for (i = 0; i < num_states; i++) {
         current = states[i];
         shift = 0;
-        /* j is the index of the current neighbor within neighbor_list and neighbor_rates */
+
         for (j = neighbor_index[i]; j < neighbor_index[i + 1]; j++) {
-            /* calculate shift as an intermediate value to reduce round-off error risks */
+
             shift += neighbor_rates[j] * (old_states[neighbor_list[j]] - current);
         }
         states[i] += dt * shift;
     }
 
-    /* Now the reactions */
+
     for (i = 0; i < num_reactions; i++) {
-        //printf("%d reactions, %d states.\n", num_reactions, num_states);
+
         num_states_involved = _num_states_involved[i];
         states_for_reaction = (double*) malloc(sizeof(double) * num_states_involved);
         states_for_reaction_dx = (double*) malloc(sizeof(double) * num_states_involved);
@@ -130,47 +196,86 @@ void _fadvance(void) {
         current_reaction = reactions[i];
 
         for (j_count = j = 0; j < max_j; j += num_states_involved, j_count++) {
-            /* copy the states to contiguous memory */
+
             for (k = 0; k < num_states_involved; k++) {
                 states_for_reaction[k] = old_states[_reaction_indices[i][j + k]];
                 states_for_reaction_dx[k] = states_for_reaction[k];
             }
 
             for (l = 0; l < num_states_involved; l++) {
-                /*calculate each partial derivative*/
+
                 states_for_reaction_dx[l] = states_for_reaction[l] + dx;
                 double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
                 m_set_val(jacobian, i, l, pd);
                 states_for_reaction_dx[l] -= dx;
             }
-            /* states[_change_states[i][j_count]] += dt * current_reaction(states_for_reaction); */
+
             v_set_val(b, i, dt * current_reaction(states_for_reaction));
         }
         free(states_for_reaction);
         free(states_for_reaction_dx);
     }
 
-    /* refactored
-    for (j_count = j = 0; j < max_j; j+= <<# involved states>>; j_count++) {
+
+    
+    int ct, total_locations = 0;
+    for (ct = 0; ct < num_reactions; ++ct){
+        total_locations += _num_location[ct];
+    }
+
+    for (j_count = 0; j_count < total_locations; j_count++) {
         for (i = 0; i < num_reactions; i++){
+            num_states_involved = _num_states_involved[i];
+            states_for_reaction = (double*) malloc(sizeof(double) * num_states_involved);
+            states_for_reaction_dx = (double*) malloc(sizeof(double) * num_states_involved);
+            current_reaction = reactions[i];
+
             for (k = 0; k < num_states_involved; l++){
-                <<copy the states to contiguous memory>>
+                states_for_reaction[k] = old_states[_reaction_indices[i][k]];
+                states_for_reaction_dx[k] = states_for_reaction[k];
             }
 
             for (l = 0; l < num_states_involved){
-                <<calculate each partial derivative>>
+                states_for_reaction_dx[l] = states_for_reaction[l] + dx;
+                double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
+                m_set_val(jacobian, i, l, pd);
+                states_for_reaction_dx[l] -= dx;
             }
         }
+
+        jacobian_copy = m_copy(jacobian, jacobian_copy);
+
+        for (i = 0; i < num_reactions; ++i){
+            for (j = 0; j < num_states; ++j){
+                if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
+                else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt);
+            }
+        }
+
+        pivot = px_get(jacobian_copy->m);
+        LUfactor(jacobian_copy, pivot);
+        LUsolve(jacobian_copy, pivot, b, x);
+
+        printf("Changed state: \n");
+        for (m = 0; m < num_states; ++m){
+            states[m] += v_get_val(x, m);
+            printf("%f\t", states[m]);
+        }
+        free(old_states);
+        free(jacobian_copy);
+        free(jacobian);
+        free(b);
+        free(pivot);
     }
 
     we loop through each location. 
     each iteration, we go through each reaction, each one being an rxd.rate and loop thru each state
     to generate a partial derivative which we cumulatively add to ones in the same location
     to generate a change for each location. As such, we would have a jacobian for each location.
-    */
+    
     
     jacobian_copy = m_copy(jacobian, jacobian_copy);
-    /* I - dt * J */
+
     for (i = 0; i < num_reactions; ++i){
         for (j = 0; j < num_states; ++j){
             if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
@@ -208,6 +313,7 @@ void _fadvance(void) {
     free(b);
     free(pivot);
 }
+*/
 
 int rxd_nonvint_block(int method, int size, double* p1, double* p2, int thread_id) {
     switch (method) {
