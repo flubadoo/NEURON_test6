@@ -120,10 +120,11 @@ void _fadvance(void) {
         states[i] += dt * shift;
     }
 
+    /* loop over each location */
     for (i = 0; i < _num_locations; ++i) {
         jacobian = m_get(num_reactions, _num_species_per_location);
         b = v_get(num_reactions);
-        x = v_get(num_states);
+        x = v_get(_num_species_per_location);
         states_for_reaction = (double*) malloc(sizeof(double) * _num_species_per_location);
         states_for_reaction_dx = (double*) malloc(sizeof(double) * _num_species_per_location);
 
@@ -131,7 +132,7 @@ void _fadvance(void) {
             current_reaction = reactions[j];
 
             for (k = 0; k < _num_species_per_location; ++k){
-                states_for_reaction[k] = old_states[k+_num_species_per_location];
+                states_for_reaction[k] = indices[j*_num_species_per_location+k];
                 states_for_reaction_dx[k] = states_for_reaction[k];
             }
 
@@ -141,15 +142,14 @@ void _fadvance(void) {
                 m_set_val(jacobian, j, l, pd);
                 states_for_reaction_dx[l] -= dx;
             }
-
         }
 
         jacobian_copy = m_copy(jacobian, jacobian_copy);
-
-        for (i = 0; i < num_reactions; ++i){
+        int _i;
+        for (_i = 0; _i < num_reactions; ++_i){
             for (j = 0; j < num_states; ++j){
-                if (i == j) m_set_val(jacobian_copy, i, j, 1-m_get_val(jacobian, i, j)*dt);
-                else m_set_val(jacobian_copy, i, j, -m_get_val(jacobian, i, j)*dt);
+                if (_i == j) m_set_val(jacobian_copy, _i, j, 1-m_get_val(jacobian, _i, j)*dt);
+                else m_set_val(jacobian_copy, _i, j, -m_get_val(jacobian, _i, j)*dt);
             }
         }
 
@@ -159,7 +159,8 @@ void _fadvance(void) {
 
         //Needs changing around
         printf("Changed state: \n");
-        for (m = 0; m < num_states; ++m){
+        for (m = 0; m < num_states;){
+            m = indices[i+num_species_per_location];
             states[m] += v_get_val(x, m);
             printf("%f\t", states[m]);
         }
