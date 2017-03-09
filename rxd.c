@@ -49,7 +49,7 @@ int num_reactions;
 int _reaction_index;
 int _num_species_per_location;
 int _num_locations;
-int _indices[MAX_REACTIONS];
+int* _indices;
 
 //int _num_states_involved[MAX_REACTIONS];
 //int _num_location[MAX_REACTIONS];
@@ -73,15 +73,15 @@ void setup_solver(PyHocObject* my_states, PyHocObject* my_dt_ptr, int my_num_sta
     neighbor_list = my_neighbor_list;
     neighbor_rates = my_neighbor_rates;
 }
-
-void set_reaction_indices(int reaction_id, int num_states_involved, int num_location int* change_states, int* indices) {
+/*
+void set_reaction_indices(int reaction_id, int num_states_involved, int num_location, int* change_states, int* indices) {
     _num_states_involved[reaction_id] = num_states_involved;
     _num_location[reaction_id] = num_location;
-    /* TODO: copy? */
+     TODO: copy?
     _reaction_indices[reaction_id] = indices;
     _change_states[reaction_id] = change_states;
 }
-
+*/
 void set_reaction_indices(int reaction_index, int num_species_per_location, int num_locations, int* indices) {
     _reaction_index = reaction_index;
     _num_species_per_location = num_species_per_location;
@@ -132,7 +132,7 @@ void _fadvance(void) {
             current_reaction = reactions[j];
 
             for (k = 0; k < _num_species_per_location; ++k){
-                states_for_reaction[k] = indices[j*_num_species_per_location+k];
+                states_for_reaction[k] = _indices[j*_num_species_per_location+k];
                 states_for_reaction_dx[k] = states_for_reaction[k];
             }
 
@@ -160,7 +160,7 @@ void _fadvance(void) {
         //Needs changing around
         printf("Changed state: \n");
         for (m = 0; m < num_states;){
-            m = indices[i+num_species_per_location];
+            m = _indices[i+_num_species_per_location];
             states[m] += v_get_val(x, m);
             printf("%f\t", states[m]);
         }
