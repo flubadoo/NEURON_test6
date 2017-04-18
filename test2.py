@@ -5,16 +5,19 @@ prototype for parts of NEURON rxd v2
 """
 
 from neuron import nrn_dll_sym, nrn_dll, h
+import os
 import ctypes
 import rxdmath
 import itertools
 import weakref
+import uuid
 
 nseg = 5
 L = 5 # length of section
 num_equations = 2
 d = 0 # diffusion rate
 
+h.load_file('stdrun.hoc')
 set_nonvint_block = nrn_dll_sym('set_nonvint_block')
 nrn = nrn_dll()
 dll = ctypes.cdll['./rxd.so']
@@ -49,16 +52,21 @@ def _list_to_cdouble_array(data):
 def cossinreaction():
     formula = """
     void reaction(double* states, double* rhs) {
-        rhs[0] = - _states[1];
+        rhs[0] = -states[1];
         rhs[1] = states[0];
     }
+
+
     """
-    filename = 'rxd-' + str(uuid.uuid1())
+    filename = 'rxddll'
+    #filename = 'cdll'
     with open(filename + '.c', 'w') as f:
         f.write(formula)
+    
     os.system('gcc -I/usr/include/python2.7 -lpython2.7 -shared -o %s.so -fPIC %s.c' % (filename, filename))
-    dll = ctypes.cdll['./%s.so' % filename]  
-    self._filename = filename
+
+    dll = ctypes.cdll['./%s.so' % filename]
+    #self._filename = filename
     reaction = dll.reaction
     reaction.argtypes = [ctypes.POINTER(ctypes.c_double)] * (num_equations)
     reaction.restype = ctypes.c_double
@@ -70,6 +78,7 @@ def do_setup():
     # setup the diffusion
     #
     ###################################################################
+    global states, neighbor_list, neighbor_rates, neighbor_index, location_state_indices
 
     dx2 = (L / float(nseg)) ** 2
     # TODO: change this when allowing d to be nonuniform
@@ -77,23 +86,31 @@ def do_setup():
     rate = d / dx2;
     neighbor_list = []
     neighbor_rates = []
+    neighbor_index = [0]
+    num_species_per_location = 2
+    node_i = 0
 
-    for i in xrange(nseg):
-        if 0 < i < nseg - 1:
-            neighbor_list += [node_i - 1, node_i + 1]
-            neighbor_rates += [rate, rate]
-        elif i == 0:
-            # TODO: change this when allowing nseg = 1
-            neighbor_list += [node_i + 1]
-            neighbor_rates += [rate]
-        else:
-            # TODO: change this when allowing nseg = 1
-            neighbor_list += [node_i - 1]
-            neighbor_rates += [rate]
+    for k in xrange(num_species_per_location):
+        for i in xrange(nseg):
+            #node_i = i * num_species_per_location
+            if 0 < i < nseg - 1:
+                neighbor_list += [node_i - 1, node_i + 1]
+                neighbor_rates += [rate, rate]
+            elif i == 0:
+                # TODO: change this when allowing nseg = 1
+                neighbor_list += [node_i + 1]
+                neighbor_rates += [rate]
+            else:
+                # TODO: change this when allowing nseg = 1
+                neighbor_list += [node_i - 1]
+                neighbor_rates += [rate]
+            neighbor_index.append(len(neighbor_list))
+            node_i += 1
 
     neighbor_index = _list_to_cint_array(neighbor_index)
     neighbor_list = _list_to_cint_array(neighbor_list)
     neighbor_rates = _list_to_cdouble_array(neighbor_rates)
+
     setup_solver(states._ref_x[0], h._ref_dt, len(states), neighbor_index, neighbor_list, neighbor_rates)
 
     ###################################################################
@@ -110,12 +127,10 @@ def do_setup():
 
     # now take care of the indices etc
     reaction_index = 0
-    num_species_per_location = 2
     num_locations = nseg
 
     # used to gather all states for a given location together
     location_state_indices = _list_to_cint_array(list(itertools.chain.from_iterable([[i, i + nseg] for i in xrange(nseg)])))
-
     # finally transfer the reaction metadata
     set_reaction_indices(reaction_index, num_species_per_location, num_locations, location_state_indices)
 
@@ -134,8 +149,9 @@ do_initialize_fptr = fptr_prototype(do_initialize)
 set_setup(do_setup_fptr)
 set_initialize(do_initialize_fptr)
 
-
 h.finitialize()
+sec = h.Section()
+h.fadvance()
 h.continuerun(1.57)
 
 print 'c:'
