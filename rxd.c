@@ -28,7 +28,8 @@ typedef struct {
 } PyHocObject;
 
 typedef void (*fptr)(void);
-typedef double (*ReactionRate)(double*);
+typedef void (*ReactionRate)(double*, double*);
+void current_reaction(double *states);
 
 /*
     Globals
@@ -87,26 +88,28 @@ void set_reaction_indices(int reaction_index, int num_species_per_location, int 
     _num_species_per_location = num_species_per_location;
     _num_locations = num_locations;
     _indices = indices;
+    int c;
 }
 
 void _fadvance(void) {
     double* old_states;
     double* states_for_reaction;
     double* states_for_reaction_dx;
-    int i, j, k, l, m, max_j, j_count;
+    int i, j, k, l, m, n, max_j, j_count;
     double current;
     double shift;
     double dt = *dt_ptr;
     double dx = FLT_EPSILON;
     ReactionRate current_reaction;
     MAT *jacobian;
-    MAT *jacobian_copy = NULL;
+    MAT *jacobian_copy;
     VEC *x;
     VEC *b;
     PERM *pivot;
 
     old_states = (double*) malloc(sizeof(double) * num_states);
-    assert(old_states); 
+    assert(old_states);
+
     for (i = 0; i < num_states; i++) {
         old_states[i] = states[i];
     }
@@ -119,53 +122,70 @@ void _fadvance(void) {
         }
         states[i] += dt * shift;
     }
-
+    
     /* loop over each location */
     for (i = 0; i < _num_locations; ++i) {
-        jacobian = m_get(num_reactions, _num_species_per_location);
-        b = v_get(num_reactions);
+
+        /* set up jacobian and other relevant matrices */
+        jacobian = m_get(_num_species_per_location, _num_species_per_location);
+        jacobian_copy = m_get(_num_species_per_location, _num_species_per_location);
+        b = v_get(_num_species_per_location);
         x = v_get(_num_species_per_location);
         states_for_reaction = (double*) malloc(sizeof(double) * _num_species_per_location);
         states_for_reaction_dx = (double*) malloc(sizeof(double) * _num_species_per_location);
+        double* result_array = (double*) malloc(sizeof(double) * _num_species_per_location);
+        double* result_array_dx = (double*) malloc(sizeof(double) * _num_species_per_location);
 
-        for (j = 0; j < num_reactions; ++j){
-            current_reaction = reactions[j];
+        // appropriately set the states_for_reaction arrays up
+        for (k = 0; k < _num_species_per_location; ++k){
+            states_for_reaction[k] = states[_indices[i*_num_species_per_location+k]];
+            states_for_reaction_dx[k] = states[_indices[i*_num_species_per_location+k]];
+        }
 
-            for (k = 0; k < _num_species_per_location; ++k){
-                states_for_reaction[k] = _indices[j*_num_species_per_location+k];
-                states_for_reaction_dx[k] = states_for_reaction[k];
-            }
+        // deal with this later
+        current_reaction = reactions[0];
 
+        for (j = 0; j < _num_species_per_location; ++j){
             for (l = 0; l < _num_species_per_location; ++l){
-                states_for_reaction_dx[l] = states_for_reaction[l] + dx;
-                double pd = (current_reaction(states_for_reaction_dx) - current_reaction(states_for_reaction))/dx;
-                m_set_val(jacobian, j, l, pd);
-                states_for_reaction_dx[l] -= dx;
+                // set up the changed states array
+                states_for_reaction_dx[j] += dx;
+                // calculate the results based on both the changed and non-changed states array
+                current_reaction(states_for_reaction_dx, result_array_dx);
+                current_reaction(states_for_reaction, result_array);
+                // pd is our jacobian approximated
+                double pd = (result_array_dx[l]-result_array[l])/dx;
+                m_set_val(jacobian, l, j, pd);
+                // reset dx array
+                states_for_reaction_dx[j] -= dx;
             }
         }
 
+        // set b
+        for (int p = 0; p < _num_species_per_location; ++p) {
+            v_set_val(b, p, dt*result_array[p]);
+        }
+
+        // create a copy of the jacobian to store I-dtJ
         jacobian_copy = m_copy(jacobian, jacobian_copy);
         int _i;
-        for (_i = 0; _i < num_reactions; ++_i){
-            for (j = 0; j < num_states; ++j){
+        for (_i = 0; _i < _num_species_per_location; ++_i){
+            for (j = 0; j < _num_species_per_location; ++j){
                 if (_i == j) m_set_val(jacobian_copy, _i, j, 1-m_get_val(jacobian, _i, j)*dt);
                 else m_set_val(jacobian_copy, _i, j, -m_get_val(jacobian, _i, j)*dt);
             }
         }
 
+        // solve for x, destructively
         pivot = px_get(jacobian_copy->m);
         LUfactor(jacobian_copy, pivot);
         LUsolve(jacobian_copy, pivot, b, x);
 
-        //Needs changing around
-        printf("Changed state: \n");
-        for (m = 0; m < num_states;){
-            m = _indices[i+_num_species_per_location];
-            states[m] += v_get_val(x, m);
-            printf("%f\t", states[m]);
+        // change the actual states now
+        for (m = 0; m < _num_species_per_location; ++m){
+            int index = _indices[i*_num_species_per_location+m];
+            states[index] += v_get_val(x, m);
         }
 
-        free(old_states);
         free(jacobian_copy);
         free(jacobian);
         free(b);
@@ -173,6 +193,8 @@ void _fadvance(void) {
         free(states_for_reaction_dx);
         free(states_for_reaction);
     }
+
+    free(old_states);
 }
 
 /*
@@ -293,6 +315,7 @@ void _fadvance(void) {
             states[m] += v_get_val(x, m);
             printf("%f\t", states[m]);
         }
+
         free(old_states);
         free(jacobian_copy);
         free(jacobian);
@@ -390,10 +413,12 @@ int rxd_nonvint_block(int method, int size, double* p1, double* p2, int thread_i
 }
 
 void set_setup(fptr setup_fn) {
+    printf("Calling set_setup\n");
 	_setup = setup_fn;
 }
 
 void set_initialize(fptr initialize_fn) {
+    printf("Calling set_initialize\n");
 	_initialize = initialize_fn;
 }
 
