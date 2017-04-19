@@ -108,7 +108,6 @@ void _fadvance(void) {
     PERM *pivot;
 
     old_states = (double*) malloc(sizeof(double) * num_states);
-    assert(old_states);
 
     for (i = 0; i < num_states; i++) {
         old_states[i] = states[i];
@@ -123,10 +122,10 @@ void _fadvance(void) {
         states[i] += dt * shift;
     }
     
-    /* loop over each location */
+    // loop over each location
     for (i = 0; i < _num_locations; ++i) {
 
-        /* set up jacobian and other relevant matrices */
+        // set up jacobian and other relevant matrices
         jacobian = m_get(_num_species_per_location, _num_species_per_location);
         jacobian_copy = m_get(_num_species_per_location, _num_species_per_location);
         b = v_get(_num_species_per_location);
@@ -142,18 +141,22 @@ void _fadvance(void) {
             states_for_reaction_dx[k] = states[_indices[i*_num_species_per_location+k]];
         }
 
-        // deal with this later
-        current_reaction = reactions[0];
-
         for (j = 0; j < _num_species_per_location; ++j){
             for (l = 0; l < _num_species_per_location; ++l){
+                double pd = 0;
                 // set up the changed states array
                 states_for_reaction_dx[j] += dx;
-                // calculate the results based on both the changed and non-changed states array
-                current_reaction(states_for_reaction_dx, result_array_dx);
-                current_reaction(states_for_reaction, result_array);
-                // pd is our jacobian approximated
-                double pd = (result_array_dx[l]-result_array[l])/dx;
+
+                // calculate "cumulative" jacobian, looping through each rxn
+                for (int r = 0; r < num_reactions; ++r) {
+                    current_reaction = reactions[r];
+                    // calculate the results based on both the changed and non-changed states array
+                    current_reaction(states_for_reaction_dx, result_array_dx);
+                    current_reaction(states_for_reaction, result_array);
+                    // pd is our jacobian approximated
+                    pd += (result_array_dx[l]-result_array[l])/dx;
+                }
+
                 m_set_val(jacobian, l, j, pd);
                 // reset dx array
                 states_for_reaction_dx[j] -= dx;
@@ -167,8 +170,7 @@ void _fadvance(void) {
 
         // create a copy of the jacobian to store I-dtJ
         jacobian_copy = m_copy(jacobian, jacobian_copy);
-        int _i;
-        for (_i = 0; _i < _num_species_per_location; ++_i){
+        for (int _i = 0; _i < _num_species_per_location; ++_i){
             for (j = 0; j < _num_species_per_location; ++j){
                 if (_i == j) m_set_val(jacobian_copy, _i, j, 1-m_get_val(jacobian, _i, j)*dt);
                 else m_set_val(jacobian_copy, _i, j, -m_get_val(jacobian, _i, j)*dt);
@@ -189,13 +191,17 @@ void _fadvance(void) {
         free(jacobian_copy);
         free(jacobian);
         free(b);
+        free(x);
         free(pivot);
         free(states_for_reaction_dx);
         free(states_for_reaction);
+        free(result_array);
+        free(result_array_dx);
     }
-
     free(old_states);
 }
+
+// old implementation looping through each reaction instead of location below
 
 /*
 void _fadvance(void) {
@@ -413,12 +419,10 @@ int rxd_nonvint_block(int method, int size, double* p1, double* p2, int thread_i
 }
 
 void set_setup(fptr setup_fn) {
-    printf("Calling set_setup\n");
 	_setup = setup_fn;
 }
 
 void set_initialize(fptr initialize_fn) {
-    printf("Calling set_initialize\n");
 	_initialize = initialize_fn;
 }
 
