@@ -74,15 +74,7 @@ void setup_solver(PyHocObject* my_states, PyHocObject* my_dt_ptr, int my_num_sta
     neighbor_list = my_neighbor_list;
     neighbor_rates = my_neighbor_rates;
 }
-/*
-void set_reaction_indices(int reaction_id, int num_states_involved, int num_location, int* change_states, int* indices) {
-    _num_states_involved[reaction_id] = num_states_involved;
-    _num_location[reaction_id] = num_location;
-     TODO: copy?
-    _reaction_indices[reaction_id] = indices;
-    _change_states[reaction_id] = change_states;
-}
-*/
+
 void set_reaction_indices(int reaction_index, int num_species_per_location, int num_locations, int* indices) {
     _reaction_index = reaction_index;
     _num_species_per_location = num_species_per_location;
@@ -198,6 +190,7 @@ void _fadvance(void) {
         free(result_array);
         free(result_array_dx);
     }
+    
     free(old_states);
 }
 
