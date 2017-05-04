@@ -9,6 +9,9 @@ import ctypes
 import rxdmath
 import itertools
 import weakref
+import os
+import tempfile
+import uuid
 
 set_nonvint_block = nrn_dll_sym('set_nonvint_block')
 nrn = nrn_dll()
@@ -30,16 +33,15 @@ clear_rates = dll.clear_rates
 register_rate = dll.register_rate
 
 set_reaction_indices = dll.set_reaction_indices
-set_reaction_indices.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+set_reaction_indices.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+
+_all_species = []
+_all_rates = []
 
 states = None
 
 region_sec = None
-states = None
 my_initializer = None
-
-_all_species = []
-_all_rates = []
 
 class Node:
     def __init__(self, x, sec, region, species):
@@ -91,6 +93,7 @@ class Rate:
     
     def _compile(self):
         self._compiled = self._rate._compile()
+
         
 def _list_to_cint_array(data):
     return (ctypes.c_int * len(data))(*tuple(data))
@@ -105,10 +108,16 @@ def _num_states(species):
 
 def do_setup():
     # TODO: remove the global neighbor_* variables; replace with a copy in C
-    global states, neighbor_index, neighbor_list, neighbor_rates, _all_change_states, _all_reaction_indices
+    global states, neighbor_index, neighbor_list, neighbor_rates, _all_change_states, _all_reaction_indices, location_state_indices
     if not _all_species: return
-    num_states = sum(_num_states(species()) for species in _all_species if species() is not None)
-    states = h.Vector(num_states)
+
+    # TODO: Make this such that we dynamically resize states vector when going to the next section rather than using the first one statically
+    spc = _all_species[0]
+    spc = spc()
+    sec1 = spc._region[0]._secs[0]
+
+    states = h.Vector(sec1.nseg * len(_all_species))
+    num_species_per_location = len(_all_species)
     # TODO: replace this to support arbitrary geometries, species on different regions
     neighbor_index = [0]
     neighbor_list = []
@@ -116,6 +125,7 @@ def do_setup():
     active_species = []
     node_i = 0
     species_count = 0
+
     for species in _all_species:
         # dereference and proceed only if species still alive
         species = species()
@@ -160,28 +170,36 @@ def do_setup():
     reaction_count = 0;
     _all_change_states = []
     _all_reaction_indices = []
+    reaction_index = 0
+    num_locations = sec.nseg
+    fxn_string = "void reaction(double* _species, double* rhs) {"
+    
     for rate in _all_rates:
         rate = rate()
         if rate is None: continue
-        rate._compile()
-        register_rate(rate._compiled)
-        
-        # TODO: this will need changed when more than one section/possibly different geometries
-        change_states = _list_to_cint_array(rate._species.indices)
-        indices = []
-        for i in xrange(len(rate._species.indices)):
-            indices += [species._start_i + i for species in active_species]
-        
-        indices = _list_to_cint_array(indices)
-        
-        _all_change_states.append(change_states)
-        _all_reaction_indices.append(indices)
+        fxn_string += ("\n\trhs[%d] = " % rate._species._id) + str(rate._rate) + ";"
 
-        set_reaction_indices(reaction_count, len(active_species), len(rate._species.indices), change_states, indices)
-        reaction_count += 1
+    fxn_string += "\n}\n"
+    register_rate(cossinreaction(fxn_string))
+    location_state_indices = _list_to_cint_array(list(itertools.chain.from_iterable([[i, i + sec.nseg] for i in xrange(sec.nseg)])))
+    set_reaction_indices(reaction_index, num_species_per_location, num_locations, location_state_indices)
+
+def cossinreaction(formula):
+    filename = 'rxddll' + str(uuid.uuid1())
+    with open(filename + '.c', 'w') as f:
+        f.write(formula)
+    
+    os.system('gcc -I/usr/include/python2.7 -lpython2.7 -shared -o %s.so -fPIC %s.c' % (filename, filename))
+
+    dll = ctypes.cdll['./%s.so' % filename]
+    reaction = dll.reaction
+    reaction.argtypes = [ctypes.POINTER(ctypes.c_double)] * (len(_all_rates))
+    reaction.restype = ctypes.c_double
+    os.remove(filename + '.c')
+    os.remove(filename + '.so')
+    return reaction
 
 def do_initialize():
-    """handle initialization at finitialize time"""
     node_i = 0
     for species in _all_species:
         species = species()
@@ -192,6 +210,11 @@ def do_initialize():
                 for seg in sec:
                     states.x[node_i] = initializer(Node(seg.x, sec, region, species))
                     node_i += 1
+        for i in xrange(len(states)):
+            if i < sec.nseg:
+                states.x[i] = 1
+            else:
+                states.x[i] = 0
 
 # register the Python callbacks
 do_setup_fptr = fptr_prototype(do_setup)

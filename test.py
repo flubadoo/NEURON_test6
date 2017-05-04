@@ -5,7 +5,7 @@ from matplotlib import pyplot
 h.load_file('stdrun.hoc')
 
 sec = h.Section()
-sec.nseg = 1
+sec.nseg = 5
 sec.L = 100
 
 r = rxd.Region([sec])
@@ -13,7 +13,7 @@ na = rxd.Species(r, initial=lambda foo: 1)
 ca = rxd.Species(r, initial=lambda foo: 0)
 
 # not at all biophysical, but just for a test
-na_wave = rxd.Rate(na, -ca+na)
+na_wave = rxd.Rate(na, -ca)
 ca_wave = rxd.Rate(ca, na)
 
 def plot_it():
@@ -25,18 +25,6 @@ def plot_it():
 h.finitialize()
 h.fadvance()
 h.continuerun(1.57)
-print(h.t)
-
-"""
-for i in xrange(5):
-    h.continuerun(i * 25)
-    plot_it()
-
-for plot_id in [1, 2]:
-    pyplot.subplot(2, 1, plot_id)
-    pyplot.xlim([0, sec.L])
-    pyplot.ylim([0, 1.1])
 
 print na.states
-pyplot.show()
-"""
+print ca.states
